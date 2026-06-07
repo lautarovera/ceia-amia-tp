@@ -43,3 +43,15 @@ class TensorizedQDA(QDA):
     def _predict_one(self, x):
         # return the class that has maximum a posteriori probability
         return np.argmax(self.log_a_priori + self._predict_log_conditionals(x))
+
+class FasterQDA(TensorizedQDA):
+    '''
+    Como queremos ahora predecir X con forma (p, n), resulta óptimo aplicar polimorfismo sobre el método predict de la clase base BaseBayesianClassifier, ya que éste llama a _predict_one para cada observacion (bucle for), tanto en QDA (inherited) y TensorizedQDA (overrided). De esta forma, al sobreescribir predict en FasterQDA, podemos eliminar el bucle for y aprovechar la tensorización.
+    '''
+    def predict(self, X):
+        unbiased_X = X - self.tensor_means
+        inner_prod = unbiased_X.transpose(0,2,1) @ self.tensor_inv_cov @ unbiased_X
+
+        log_conditionals =0.5*np.log(LA.det(self.tensor_inv_cov)) - 0.5 * np.diagonal(inner_prod, axis1=1, axis2=2)
+
+        return np.argmax(self.log_a_priori + log_conditionals, axis=0).reshape(1, -1)
