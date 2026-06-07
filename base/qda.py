@@ -48,10 +48,25 @@ class FasterQDA(TensorizedQDA):
     '''
     Como queremos ahora predecir X con forma (p, n), resulta óptimo aplicar polimorfismo sobre el método predict de la clase base BaseBayesianClassifier, ya que éste llama a _predict_one para cada observacion (bucle for), tanto en QDA (inherited) y TensorizedQDA (overrided). De esta forma, al sobreescribir predict en FasterQDA, podemos eliminar el bucle for y aprovechar la tensorización.
     '''
+
     def predict(self, X):
         unbiased_X = X - self.tensor_means
         inner_prod = unbiased_X.transpose(0,2,1) @ self.tensor_inv_cov @ unbiased_X
 
-        log_conditionals =0.5*np.log(LA.det(self.tensor_inv_cov)) - 0.5 * np.diagonal(inner_prod, axis1=1, axis2=2)
+        log_conditionals =0.5*np.log(LA.det(self.tensor_inv_cov))[:, None] - 0.5 * np.diagonal(inner_prod, axis1=1, axis2=2)
 
-        return np.argmax(self.log_a_priori + log_conditionals, axis=0).reshape(1, -1)
+        return np.argmax(self.log_a_priori[:, None] + log_conditionals, axis=0).reshape(1, -1)
+
+class EfficientQDA(TensorizedQDA):
+    '''
+    Utilizando la propiedad demostrada en el punto 5, se puede reimplementar la predicción del modelo FasterQDA de forma eficiente. Se puede calcular directamente la diagonal utilizando productos elemento a elemento y sumas.
+    '''
+
+    def predict(self, X):
+        unbiased_X = X - self.tensor_means
+        tmp = self.tensor_inv_cov @ unbiased_X
+        inner_prod_diag = np.sum(tmp * unbiased_X, axis=1)
+
+        log_conditionals = 0.5*np.log(LA.det(self.tensor_inv_cov))[:, None] - 0.5 * inner_prod_diag
+
+        return np.argmax(self.log_a_priori[:, None] + log_conditionals, axis=0).reshape(1, -1)
